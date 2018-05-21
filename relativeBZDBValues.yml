@@ -1,0 +1,10 @@
+relative_bzdb:
+    - bzdb: _tankSpeed
+      delay: 60 # number of seconds between player count changes. This will prevent repeated changes as players join/part
+      values:
+          - minPlayers: 0
+            value: 40
+            message: "With less than 4 players, _tankSpeed has been set 40"
+          - minPlayers: 4
+            value: 35
+            message: "Tank speed has been set to 35"

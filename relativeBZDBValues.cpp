@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (C) 2018 Vladimir "allejo" Jimenez
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -20,16 +20,101 @@
  * THE SOFTWARE.
  */
 
+#include <yaml-cpp/yaml.h>
+
 #include "bzfsAPI.h"
 #include "plugin_utils.h"
 
+struct PlayerCountCondition
+{
+    int minPlayers;
+    float value;
+    std::string message;
+};
+
+struct BZDBCondition
+{
+    std::string bzdbSetting;
+    int delayInSeconds;
+    std::vector<PlayerCountCondition> conditions;
+};
+
+namespace YAML {
+    template<>
+    struct convert<PlayerCountCondition>
+    {
+        static Node encode(const PlayerCountCondition &rhs)
+        {
+            Node node;
+            node["minPlayers"] = rhs.minPlayers;
+            node["value"] = rhs.value;
+            node["message"] = rhs.message;
+
+            return node;
+        }
+
+        static bool decode(const Node &node, PlayerCountCondition &rhs)
+        {
+            if (!node.IsMap())
+            {
+                return false;
+            }
+
+            rhs.minPlayers = node["minPlayers"].as<int>();
+            rhs.value = node["value"].as<float>();
+            rhs.message = node["message"].as<std::string>();
+
+            return true;
+        }
+    };
+
+    template<>
+    struct convert<BZDBCondition>
+    {
+        static Node encode(const BZDBCondition &rhs)
+        {
+            Node node;
+            node["bzdb"] = rhs.bzdbSetting;
+            node["delay"] = rhs.delayInSeconds;
+            node["values"] = rhs.conditions;
+
+            return node;
+        }
+
+        static bool decode(const Node &node, BZDBCondition &rhs)
+        {
+            if (!node.IsMap())
+            {
+                return false;
+            }
+
+            rhs.bzdbSetting = node["bzdb"].as<std::string>();
+            rhs.delayInSeconds = node["delay"].as<int>();
+            rhs.conditions = node["values"].as<std::vector<PlayerCountCondition>>();
+
+            return true;
+        }
+    };
+}
+
 class RelativeBZDBValues : public bz_Plugin, public bz_CustomSlashCommandHandler
 {
+public:
     virtual const char* Name();
     virtual void Init(const char* config);
     virtual void Cleanup();
     virtual void Event(bz_EventData* eventData);
     virtual bool SlashCommand(int playerID, bz_ApiString command, bz_ApiString /*message*/, bz_APIStringList *params);
+
+private:
+    void parseConfiguration(const char* config);
+    void updateVariablesIfNecessary();
+
+    std::map<std::string, double> lastConditionChange;
+    std::map<std::string, int> lastCondition;
+    std::vector<BZDBCondition> conditions;
+
+    const char* configurationFile;
 };
 
 BZ_PLUGIN(RelativeBZDBValues)
@@ -44,13 +129,17 @@ void RelativeBZDBValues::Init(const char* config)
     Register(bz_ePlayerJoinEvent);
     Register(bz_ePlayerPartEvent);
 
+    bz_registerCustomSlashCommand("reload", this);
     bz_registerCustomSlashCommand("set", this);
+
+    parseConfiguration(config);
 }
 
 void RelativeBZDBValues::Cleanup()
 {
     Flush();
 
+    bz_removeCustomSlashCommand("reload");
     bz_removeCustomSlashCommand("set");
 }
 
@@ -59,29 +148,9 @@ void RelativeBZDBValues::Event(bz_EventData* eventData)
     switch (eventData->eventType)
     {
         case bz_ePlayerJoinEvent:
-        {
-            // This event is called each time a player joins the game
-            bz_PlayerJoinPartEventData_V1 *data = (bz_PlayerJoinPartEventData_V1*)eventData;
-
-            // Data
-            // ----
-            // (int)                  playerID  - The player ID that is joining
-            // (bz_BasePlayerRecord*) record    - The player record for the joining player
-            // (double)               eventTime - Time of event.
-        }
-        break;
-
         case bz_ePlayerPartEvent:
         {
-            // This event is called each time a player leaves a game
-            bz_PlayerJoinPartEventData_V1 *data = (bz_PlayerJoinPartEventData_V1*)eventData;
-
-            // Data
-            // ----
-            // (int)                  playerID  - The player ID that is leaving
-            // (bz_BasePlayerRecord*) record    - The player record for the leaving player
-            // (bz_ApiString)         reason    - The reason for leaving, such as a kick or a ban
-            // (double)               eventTime - Time of event.
+            updateVariablesIfNecessary();
         }
         break;
 
@@ -92,11 +161,43 @@ void RelativeBZDBValues::Event(bz_EventData* eventData)
 
 bool RelativeBZDBValues::SlashCommand(int playerID, bz_ApiString command, bz_ApiString /*message*/, bz_APIStringList *params)
 {
-    if (command == "set")
+    if (command == "reload")
     {
 
-        return true;
+        return false;
+    }
+    else if (command == "set")
+    {
+
+        return false;
     }
 
     return false;
+}
+
+void RelativeBZDBValues::parseConfiguration(const char* config)
+{
+    configurationFile = config;
+
+    YAML::Node configuration = YAML::LoadFile(config);
+
+    conditions = configuration["relative_bzdb"].as<std::vector<BZDBCondition>>();
+}
+
+void RelativeBZDBValues::updateVariablesIfNecessary()
+{
+    int totalPlayers = bz_getPlayerCount() - bz_getTeamCount(eObservers);
+
+    for (auto &condition : conditions)
+    {
+        auto values = condition.conditions;
+
+        for (auto &condition : values)
+        {
+            if (totalPlayers >= condition.minPlayers)
+            {
+
+            }
+        }
+    }
 }
