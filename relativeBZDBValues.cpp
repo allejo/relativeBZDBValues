@@ -25,21 +25,46 @@
 #include "bzfsAPI.h"
 #include "plugin_utils.h"
 
+// Define plug-in name
+const std::string PLUGIN_NAME = "Relative BZDB Values";
+
+// Define plug-in version numbering
+const int MAJOR = 1;
+const int MINOR = 0;
+const int REV = 0;
+const int BUILD = 2;
+
+enum class ValueConditionType
+{
+    INT,
+    BOOL,
+    DOUBLE,
+    STRING,
+    UNKNOWN
+};
+
 struct PlayerCountCondition
 {
-    int minPlayers;
-    float value;
-    std::string message;
+    int minPlayers = -1;
+    std::string message = "";
+
+    ValueConditionType valueType = ValueConditionType::UNKNOWN;
+
+    int intValue = -1;
+    bool boolValue = false;
+    double doubleValue = -1.0;
+    bz_ApiString stringValue = "";
 };
 
 struct BZDBCondition
 {
-    std::string bzdbSetting;
-    int delayInSeconds;
+    std::string bzdbSetting = "";
+    int delayInSeconds = -1;
     std::vector<PlayerCountCondition> conditions;
 };
 
-namespace YAML {
+namespace YAML
+{
     template<>
     struct convert<PlayerCountCondition>
     {
@@ -47,8 +72,29 @@ namespace YAML {
         {
             Node node;
             node["minPlayers"] = rhs.minPlayers;
-            node["value"] = rhs.value;
             node["message"] = rhs.message;
+
+            switch (rhs.valueType)
+            {
+                case ValueConditionType::INT:
+                    node["intValue"] = rhs.intValue;
+                    break;
+
+                case ValueConditionType::BOOL:
+                    node["boolValue"] = rhs.boolValue;
+                    break;
+
+                case ValueConditionType::DOUBLE:
+                    node["doubleValue"] = rhs.doubleValue;
+                    break;
+
+                case ValueConditionType::STRING:
+                    node["stringValue"] = rhs.stringValue.c_str();
+                    break;
+
+                default:
+                    break;
+            }
 
             return node;
         }
@@ -60,9 +106,51 @@ namespace YAML {
                 return false;
             }
 
-            rhs.minPlayers = node["minPlayers"].as<int>();
-            rhs.value = node["value"].as<float>();
-            rhs.message = node["message"].as<std::string>();
+            // Handle minimum player count
+            if (node["minPlayers"])
+            {
+                rhs.minPlayers = node["minPlayers"].as<int>();
+            }
+            else
+            {
+                rhs.minPlayers = 1;
+            }
+
+            // Handle BZDB values
+            if (node["intValue"])
+            {
+                rhs.intValue = node["intValue"].as<int>();
+                rhs.valueType = ValueConditionType::INT;
+            }
+            else if (node["boolValue"])
+            {
+                rhs.boolValue = node["boolValue"].as<bool>();
+                rhs.valueType = ValueConditionType::BOOL;
+            }
+            else if (node["doubleValue"])
+            {
+                rhs.doubleValue = node["doubleValue"].as<double>();
+                rhs.valueType = ValueConditionType::DOUBLE;
+            }
+            else if (node["stringValue"])
+            {
+                rhs.stringValue = node["stringValue"].as<std::string>();
+                rhs.valueType = ValueConditionType::STRING;
+            }
+            else
+            {
+                rhs.valueType = ValueConditionType::UNKNOWN;
+            }
+
+            // Handle public message announcements
+            if (node["message"])
+            {
+                rhs.message = node["message"].as<std::string>();
+            }
+            else
+            {
+                rhs.message = "";
+            }
 
             return true;
         }
@@ -107,12 +195,16 @@ public:
     virtual bool SlashCommand(int playerID, bz_ApiString command, bz_ApiString /*message*/, bz_APIStringList *params);
 
 private:
-    void parseConfiguration(const char* config);
     void updateVariablesIfNecessary();
+    void updateBZDBCondition(BZDBCondition condition, PlayerCountCondition *value);
+    void safeSendMessage(bz_ApiString message);
+    void parseConfiguration();
 
-    std::map<std::string, double> lastConditionChange;
-    std::map<std::string, int> lastCondition;
+    std::map<std::string, PlayerCountCondition> currentActiveCondition;
+    std::map<std::string, double> timeConditionChanged;
+
     std::vector<BZDBCondition> conditions;
+    std::vector<std::string> bzdbBlacklist;
 
     const char* configurationFile;
 };
@@ -121,18 +213,25 @@ BZ_PLUGIN(RelativeBZDBValues)
 
 const char* RelativeBZDBValues::Name()
 {
-    return "Relative BZDB Values";
+    static const char* pluginBuild;
+
+    if (!pluginBuild)
+    {
+        pluginBuild = bz_format("%s %d.%d.%d (%d)", PLUGIN_NAME.c_str(), MAJOR, MINOR, REV, BUILD);
+    }
+
+    return pluginBuild;
 }
 
 void RelativeBZDBValues::Init(const char* config)
 {
-    Register(bz_ePlayerJoinEvent);
-    Register(bz_ePlayerPartEvent);
+    Register(bz_eTickEvent);
 
     bz_registerCustomSlashCommand("reload", this);
     bz_registerCustomSlashCommand("set", this);
 
-    parseConfiguration(config);
+    configurationFile = config;
+    parseConfiguration();
 }
 
 void RelativeBZDBValues::Cleanup()
@@ -147,8 +246,7 @@ void RelativeBZDBValues::Event(bz_EventData* eventData)
 {
     switch (eventData->eventType)
     {
-        case bz_ePlayerJoinEvent:
-        case bz_ePlayerPartEvent:
+        case bz_eTickEvent:
         {
             updateVariablesIfNecessary();
         }
@@ -163,11 +261,33 @@ bool RelativeBZDBValues::SlashCommand(int playerID, bz_ApiString command, bz_Api
 {
     if (command == "reload")
     {
+        if (params->size() == 0)
+        {
+            parseConfiguration();
+        }
+        else if (params->get(0) == "relativeBZDB")
+        {
+            parseConfiguration();
+
+            return true;
+        }
 
         return false;
     }
-    else if (command == "set")
+    else if (command == "set" && (bz_hasPerm(playerID, "set") || bz_hasPerm(playerID, "setAll")))
     {
+        if (params->size() >= 2)
+        {
+            std::string bzdbSetting = params->get(0);
+
+            if (std::find(bzdbBlacklist.begin(), bzdbBlacklist.end(), bzdbSetting) != bzdbBlacklist.end())
+            {
+                bz_sendTextMessage(BZ_SERVER, playerID, "The BZDB variable you're trying to set is maintained by a plug-in.");
+                bz_sendTextMessage(BZ_SERVER, playerID, "You are not allowed to change this variable.");
+
+                return true;
+            }
+        }
 
         return false;
     }
@@ -175,29 +295,114 @@ bool RelativeBZDBValues::SlashCommand(int playerID, bz_ApiString command, bz_Api
     return false;
 }
 
-void RelativeBZDBValues::parseConfiguration(const char* config)
+void RelativeBZDBValues::parseConfiguration()
 {
-    configurationFile = config;
-
-    YAML::Node configuration = YAML::LoadFile(config);
+    YAML::Node configuration = YAML::LoadFile(configurationFile);
 
     conditions = configuration["relative_bzdb"].as<std::vector<BZDBCondition>>();
+
+    // Configure out BZDB blacklist
+    // ---
+    // These are BZDB settings that maintained by this plug-in, so we should prevent admins from /set'ing them
+
+    bzdbBlacklist.clear();
+
+    for (BZDBCondition &condition : conditions)
+    {
+        bzdbBlacklist.push_back(condition.bzdbSetting);
+    }
 }
 
 void RelativeBZDBValues::updateVariablesIfNecessary()
 {
+    double now = bz_getCurrentTime();
     int totalPlayers = bz_getPlayerCount() - bz_getTeamCount(eObservers);
 
-    for (auto &condition : conditions)
+    for (BZDBCondition &condition : conditions)
     {
+        double lastChangeTime = timeConditionChanged[condition.bzdbSetting];
+
+        if (lastChangeTime + condition.delayInSeconds > now)
+        {
+            // Don't change a value if the number of seconds of `delay` hasn't passed yet
+            continue;
+        }
+
         auto values = condition.conditions;
 
-        for (auto &condition : values)
-        {
-            if (totalPlayers >= condition.minPlayers)
-            {
+        PlayerCountCondition *queuedValue;
 
+        // Go through to values for this BZDB setting
+        for (auto &value : values)
+        {
+            if (totalPlayers >= value.minPlayers)
+            {
+                queuedValue = &value;
             }
         }
+
+        updateBZDBCondition(condition, queuedValue);
+    }
+}
+
+void RelativeBZDBValues::updateBZDBCondition(BZDBCondition condition, PlayerCountCondition* value)
+{
+    if (!value)
+    {
+        return;
+    }
+
+    if (currentActiveCondition.count(condition.bzdbSetting))
+    {
+        PlayerCountCondition current = currentActiveCondition[condition.bzdbSetting];
+
+        if (current.minPlayers == value->minPlayers)
+        {
+            // This is the same condition that's currently active, so don't try setting it again.
+            return;
+        }
+    }
+
+    bool valueWasChanged = true;
+    const char* bzdb = condition.bzdbSetting.c_str();
+
+    switch (value->valueType)
+    {
+        case ValueConditionType::INT:
+            bz_updateBZDBInt(bzdb, value->intValue);
+            break;
+
+        case ValueConditionType::BOOL:
+            bz_updateBZDBBool(bzdb, value->boolValue);
+            break;
+
+        case ValueConditionType::DOUBLE:
+            bz_updateBZDBDouble(bzdb, value->doubleValue);
+            break;
+
+        case ValueConditionType::STRING:
+            bz_updateBZDBString(bzdb, value->stringValue.c_str());
+            break;
+
+        default:
+            bz_debugMessagef(0, "WARNING :: %s :: A condition for %s does not have a valid value.", PLUGIN_NAME.c_str(), bzdb);
+            valueWasChanged = false;
+            break;
+    }
+
+    if (valueWasChanged)
+    {
+        currentActiveCondition[condition.bzdbSetting] = *value;
+        timeConditionChanged[condition.bzdbSetting] = bz_getCurrentTime();
+
+        safeSendMessage(value->message);
+    }
+}
+
+void RelativeBZDBValues::safeSendMessage(bz_ApiString message)
+{
+    if (!message.empty())
+    {
+        bz_sendTextMessage(BZ_SERVER, BZ_ALLUSERS, message.c_str());
     }
 }
