@@ -265,7 +265,7 @@ bool RelativeBZDBValues::SlashCommand(int playerID, bz_ApiString command, bz_Api
         {
             parseConfiguration();
         }
-        else if (params->get(0) == "relativeBZDB")
+        else if (params->get(0) == "all" || params->get(0) == "relativeBZDB")
         {
             parseConfiguration();
 
@@ -274,7 +274,7 @@ bool RelativeBZDBValues::SlashCommand(int playerID, bz_ApiString command, bz_Api
 
         return false;
     }
-    else if (command == "set" && (bz_hasPerm(playerID, "set") || bz_hasPerm(playerID, "setAll")))
+    else if (command == "set" && (bz_hasPerm(playerID, "setAll") || bz_hasPerm(playerID, "setVar")))
     {
         if (params->size() >= 2)
         {
