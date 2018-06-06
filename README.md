@@ -38,7 +38,7 @@ relative_bzdb:
       values:
           - minPlayers: 1 # The minimum amount of non-observer players needed for this condition to apply
             intValue: 40  # The value that will set
-            message: "With less than 4 players, _tankSpeed has been set 40" # (Optional) Message to announce changes
+            message: "As a lone tank, _tankSpeed has been set 40" # (Optional) Message to announce changes
           - minPlayers: 2
             intValue: 35
             message: "Tank speed has been set to 35"
