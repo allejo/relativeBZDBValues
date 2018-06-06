@@ -32,7 +32,7 @@ const std::string PLUGIN_NAME = "Relative BZDB Values";
 const int MAJOR = 1;
 const int MINOR = 0;
 const int REV = 0;
-const int BUILD = 2;
+const int BUILD = 14;
 
 enum class ValueConditionType
 {
