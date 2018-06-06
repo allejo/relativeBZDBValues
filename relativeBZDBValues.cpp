@@ -259,7 +259,7 @@ void RelativeBZDBValues::Event(bz_EventData* eventData)
 
 bool RelativeBZDBValues::SlashCommand(int playerID, bz_ApiString command, bz_ApiString /*message*/, bz_APIStringList *params)
 {
-    if (command == "reload")
+    if (command == "reload" && bz_hasPerm(playerID, "setAll"))
     {
         if (params->size() == 0)
         {
