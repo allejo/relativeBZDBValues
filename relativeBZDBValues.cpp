@@ -206,7 +206,7 @@ private:
     std::vector<BZDBCondition> conditions;
     std::vector<std::string> bzdbBlacklist;
 
-    const char* configurationFile;
+    std::string configurationFile;
 };
 
 BZ_PLUGIN(RelativeBZDBValues)
@@ -330,7 +330,7 @@ void RelativeBZDBValues::updateVariablesIfNecessary()
 
         auto values = condition.conditions;
 
-        PlayerCountCondition *queuedValue;
+        PlayerCountCondition *queuedValue = nullptr;
 
         // Go through to values for this BZDB setting
         for (auto &value : values)
