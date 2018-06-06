@@ -68,9 +68,11 @@ For example, creating a rule for changing the `_skyColor` based on player count 
 ### Custom Slash Commands
 
 | Command | Permission | Description |
-| ------- | ---------- | ----------- |
-| <code>/reload&nbsp;<all\|relativeBZDB></code> | setAll | This plug-in conditionally overloads `/reload` to listen for `relativeBZDB` or a reload all. |
-| `/set` | vote | This plug-in overloads the `/set` command to disallow setting BZDB variables if they're maintained by this plug-in. |
+| ------- | :--------: | ----------- |
+| `/reload` | `setAll` | This plug-in overloads `/reload` to reload the configuration file. This does not stop propagation and allows other plugins and the server to reload what's needed. |
+| `/reload all` | `setAll` | Alias for `/reload` without any options. |
+| <code>/reload&nbsp;relativeBZDB</code> | `setAll` | This plug-in overloads `/reload` to insert an additional option to reload *just* the configuration of this plug-in: `relativeBZDB`. |
+| `/set` | `setAll` `setVar` | This plug-in overloads the `/set` command to disallow setting BZDB variables if they're maintained by this plug-in. |
 
 ## License
 
