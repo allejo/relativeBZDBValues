@@ -298,11 +298,27 @@ bool RelativeBZDBValues::SlashCommand(int playerID, bz_ApiString command, bz_Api
 
 void RelativeBZDBValues::parseConfiguration()
 {
-    YAML::Node configuration = YAML::LoadFile(configurationFile);
+    if (configurationFile.empty())
+    {
+        bz_debugMessagef(0, "ERROR :: %s :: The path to the required configuration cannot be blank.", PLUGIN_NAME.c_str());
+        return;
+    }
 
-    conditions = configuration["relative_bzdb"].as<std::vector<BZDBCondition>>();
+    try
+    {
+        YAML::Node configuration = YAML::LoadFile(configurationFile);
 
-    // Configure out BZDB blacklist
+        conditions = configuration["relative_bzdb"].as<std::vector<BZDBCondition>>();
+    }
+    catch (YAML::Exception e)
+    {
+        bz_debugMessagef(0, "ERROR :: %s :: An error occurred while trying to read the YAML configuration file.", PLUGIN_NAME.c_str());
+        bz_debugMessagef(0, "ERROR :: %s ::   %s", PLUGIN_NAME.c_str(), e.msg.c_str());
+
+        return;
+    }
+
+    // Configure our BZDB blacklist
     // ---
     // These are BZDB settings that maintained by this plug-in, so we should prevent admins from /set'ing them
 
