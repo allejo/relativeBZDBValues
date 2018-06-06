@@ -10,9 +10,13 @@ A BZFlag plug-in which will change BZDB variables based on the amount of non-obs
 
 - BZFlag 2.4.4+
 - C++11
-- [yaml-cpp](https://github.com/jbeder/yaml-cpp/)
+- [yaml-cpp 0.5+](https://github.com/jbeder/yaml-cpp/)
 
 ## Usage
+
+### Compiler Requirements
+
+On Ubuntu/Debian distributions, you will need to install the `libyaml-cpp-dev` and `libboost-dev` packages. Or you may build/install `yaml-cpp` 0.6.x from its source and skip the Boost dependency.
 
 ### Loading the plug-in
 
