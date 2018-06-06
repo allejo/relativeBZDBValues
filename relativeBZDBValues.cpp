@@ -261,12 +261,13 @@ bool RelativeBZDBValues::SlashCommand(int playerID, bz_ApiString command, bz_Api
 {
     if (command == "reload" && bz_hasPerm(playerID, "setAll"))
     {
-        if (params->size() == 0)
+        if (params->size() == 0 || (params->size() > 0 && params->get(0) == "all"))
         {
             parseConfiguration();
         }
-        else if (params->get(0) == "all" || params->get(0) == "relativeBZDB")
+        else if (params->get(0) == "relativeBZDB")
         {
+            bz_sendTextMessagef(BZ_SERVER, playerID, "Database for \"%s\" reloaded", PLUGIN_NAME.c_str());
             parseConfiguration();
 
             return true;
