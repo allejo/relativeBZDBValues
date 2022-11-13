@@ -20,6 +20,7 @@
  * THE SOFTWARE.
  */
 
+#include <algorithm>
 #include <yaml-cpp/yaml.h>
 
 #include "bzfsAPI.h"
